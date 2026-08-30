@@ -1,0 +1,5 @@
+numpy>=2.0
+openai>=2.0
+httpx>=0.27
+jieba>=0.42
+rank-bm25>=0.2.2

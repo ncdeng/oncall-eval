@@ -1,0 +1,84 @@
+{
+  "retrieval": {
+    "whole": {
+      "chunks": 5,
+      "recall@1": 0.92,
+      "recall@3": 1.0,
+      "answer_coverage": 0.987,
+      "n": 25
+    },
+    "heading": {
+      "chunks": 18,
+      "recall@1": 0.92,
+      "recall@3": 1.0,
+      "answer_coverage": 1.0,
+      "n": 25
+    }
+  },
+  "ondemand": {
+    "n": 20,
+    "route_accuracy": 1.0,
+    "fixed_wasted_retrievals": 10,
+    "ondemand_wasted_retrievals": 0,
+    "retrievals_saved": 10
+  },
+  "replan": {
+    "n": 5,
+    "linear_success": 2,
+    "replan_success": 5,
+    "linear_rate": 0.4,
+    "replan_rate": 1.0,
+    "details": [
+      {
+        "id": "t1-gpu-mem-full",
+        "linear_success": false,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "结论：gpu01 节点 3 号卡显存长期被 PID 34521 占用 22.4GB，但 GPU 利用率为 0%，已持续运行 72 小时，且近期无对应任务启动、训练报错、OOM 或 NVIDIA 驱动异常，表明该进程很可能是任务结束后未正常释放显存的残留进程，导致显存泄漏或资源未清理；PID 40112 仅占用 1.2GB 且仍有 35% 利用率，不是本次告警",
+        "replan_conclusion": "根因已定位：PID 34521（用户 zhangsan，python -m jupyter_kernel）已运行 3 天，持有 GPU 3 号卡 22.4GB 显存，GPU 利用率为 0%，且最近 48 小时无输出，属于闲置内核未释放显存，导致显存占用持续 98%。"
+      },
+      {
+        "id": "t2-train-vanish",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "结论：该训练任务最可能因数据加载阶段的 `dataloader worker` 内存异常增长导致主机内存耗尽，被系统 OOM 机制静默杀死；残留多个单进程 RSS 达 7–8GB 的 worker 可作为直接证据。未发现调度器抢占、超时、主动取消、GPU/CPU 异常或应用层报错，因此根因定位为数据加载进程的内存泄漏或过高并发造成的主进程非正常退出。",
+        "replan_conclusion": "根因已定位：gpu02 内核因系统内存不足（Out of memory）杀死了训练进程 PID 78901（python）。该进程占用匿名内存约 58.9GB，总虚拟内存约 61.2GB，发生时间与任务消失吻合，因此日志在 epoch 3 数据加载阶段突然中断且无应用层报错。"
+      },
+      {
+        "id": "t3-disk-full",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "根因是 `/data/checkpoints/lisi/exp_ablation` 训练任务近 3 天持续按每 100 step 保存全量 checkpoint，未执行历史 checkpoint 清理，新增约 1.2TB，累计占用 1.8TB，导致共享存储整体使用率达到 99%，最终引发 checkpoint 保存时 `No space left on de",
+        "replan_conclusion": "根因已定位：共享存储 /data 容量耗尽主要由 /data/checkpoints/lisi/exp_ablation 占用 1.8TB 导致，其中近 3天新增 1.2TB。该实验脚本每100 step保存全量 checkpoint 且未执行清理，造成 /data 使用率升至99%，从而触发保存 checkpoint 时的 No space left on"
+      },
+      {
+        "id": "t4-nccl-timeout",
+        "linear_success": false,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 3,
+        "linear_conclusion": "根因定位为 gpu03 上的 rank1 进程在 step 236 后异常停止或失联，导致 gpu04 上的 rank0 在后续 barrier 阶段持续等待并触发 NCCL communication timeout；两节点网络连通、带宽及资源监控均无异常，因此可排除网络故障和资源不足，故障集中在 gpu03 的 rank1 进程或其本地 GPU/运行环境",
+        "replan_conclusion": "根因已定位：gpu03 上的 rank1 训练进程（PID 91203，python）在 step 236 后被内核因 Memory cgroup out of memory 强制杀死，退出码 137，时间与 rank1 失联一致。gpu04 的 rank0 随后在 barrier 等待 rank1 时触发 NCCL communication timeou"
+      },
+      {
+        "id": "t5-label-svc-canceled",
+        "linear_success": false,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "根因是下游 `label-svc` 响应延迟过高，导致网关等待上游响应超时并主动取消请求，从而集中产生 `context canceled`，引发接口错误率升高；网关及主机 CPU、内存资源正常，排除网关自身或节点资源瓶颈。",
+        "replan_conclusion": "根因定位为 label-svc 数据库查询耗时异常升高，导致数据库连接池使用率达到 100%，所有活跃连接均处于查询执行状态；请求在 label-svc 长时间等待后触发上游超时，网关主动取消请求并产生大量 context canceled，最终导致接口错误率升至 35%。"
+      }
+    ]
+  },
+  "_meta": {
+    "embed_model": "BAAI/bge-m3",
+    "chat_model": "gpt-5.6-terra",
+    "time": "2026-08-30 03:59:53"
+  }
+}

@@ -1,0 +1,251 @@
+{
+  "retrieval": {
+    "whole": {
+      "chunks": 18,
+      "recall@1": 0.8,
+      "recall@3": 0.97,
+      "answer_coverage": 0.975,
+      "n": 100
+    },
+    "heading": {
+      "chunks": 83,
+      "recall@1": 0.88,
+      "recall@3": 0.96,
+      "answer_coverage": 0.952,
+      "n": 100
+    },
+    "run_at": "2026-08-30 04:58:35"
+  },
+  "ondemand": {
+    "n": 100,
+    "invalid_n": 0,
+    "route_accuracy": 0.99,
+    "fixed_wasted_retrievals": 50,
+    "ondemand_wasted_retrievals": 1,
+    "retrievals_saved": 49,
+    "errors": [
+      {
+        "id": "d093",
+        "query": "实验跑崩了，好烦啊",
+        "pred": true,
+        "gold": false
+      }
+    ],
+    "invalid": [],
+    "run_at": "2026-08-30 05:09:51"
+  },
+  "replan": {
+    "n": 16,
+    "invalid_n": 0,
+    "linear_success": 9,
+    "replan_success": 14,
+    "linear_rate": 0.562,
+    "replan_rate": 0.875,
+    "avg_replan_steps": 2.44,
+    "by_difficulty": {
+      "L2": {
+        "n": 10,
+        "linear": 4,
+        "replan": 9
+      },
+      "L1": {
+        "n": 3,
+        "linear": 3,
+        "replan": 3
+      },
+      "L3": {
+        "n": 3,
+        "linear": 2,
+        "replan": 2
+      }
+    },
+    "details": [
+      {
+        "id": "t01-gpu-mem-full",
+        "difficulty": "L2",
+        "linear_success": false,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "根因是 PID 34521 对 3 号 GPU 显存长期占用 22.4GB，但 GPU 利用率为 0%，且已持续运行 72 小时，符合任务异常退出或进程残留导致显存未释放的特征；PID 40112 仅占用 1.2GB 且仍有 35% 利用率，属正常活动进程。未发现新的任务、应用或驱动异常，因此可判定为 PID 34521 的无效残留进程占用显存，引发显存使用",
+        "replan_conclusion": "根因已定位：gpu01 节点 3 号卡上的 PID 34521（用户 zhangsan，python -m jupyter_kernel）已运行 72 小时，GPU 利用率为 0%，最近 48 小时无任何输出，但持续占用 22.4GB 显存，属于长期空闲且未释放显存的遗留 Jupyter 内核进程，导致显存占用持续 98%。"
+      },
+      {
+        "id": "t02-train-vanish",
+        "difficulty": "L1",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "结论：wangwu 在 gpu02 上提交的训练任务因进程占用内存持续增长，触发节点内核 OOM 机制，被系统强制杀死（Killed process 78901）；因此训练进程直接消失，应用日志未能输出 ERROR、Traceback 或退出码，日志最终停留在 epoch 3 数据加载阶段。",
+        "replan_conclusion": "根因已定位：gpu02 发生主机内存耗尽，内核 OOM Killer 在任务消失时间杀死了训练进程 python（PID 78901）。该进程 total-vm 61.2GB、anon-rss 58.9GB，日志停在 epoch 3 数据加载阶段与内存异常吻合；终端无报错是因为进程被内核直接终止。"
+      },
+      {
+        "id": "t03-disk-full",
+        "difficulty": "L2",
+        "linear_success": false,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "根因是共享存储 `/data` 的磁盘空间已基本耗尽，使用率达到 99%，其中 `checkpoints` 占用约 5.6 TB、`datasets` 占用约 1.9 TB，导致应用保存 checkpoint 时触发 `OSError: No space left on device`；inode 使用率正常，且内核无 I/O、文件系统或只读异常，因此不是 ",
+        "replan_conclusion": "根因已定位：/data 使用率达99%导致保存 checkpoint 时出现 No space left on device。主要占用来自 /data/checkpoints（5.6TB），其中 lisi/exp_ablation 占1.8TB，近3天新增1.2TB；其训练脚本每100 step保存全量 checkpoint且未清理，导致空间快速耗尽。建议立"
+      },
+      {
+        "id": "t04-nccl-timeout",
+        "difficulty": "L2",
+        "linear_success": false,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 3,
+        "linear_conclusion": "根因定位为 `gpu03` 上的 `rank1` 进程在训练至 step 236 后异常卡死或退出，导致 `gpu04` 上的 `rank0` 在后续 barrier 中持续等待并触发 NCCL communication timeout；两节点网络连通性、带宽、延迟及网络错误均正常，因此可排除网络故障，问题集中在 `gpu03` 本地的进程执行或 GPU/",
+        "replan_conclusion": "根因是 gpu03 上 rank1 的 Python 训练进程 PID 91203 被内核因 Memory cgroup out of memory 强制杀死，退出码 137，导致 rank1 在 step 236 后失联；gpu04 的 rank0 随后在 barrier 等待时触发 NCCL communication timeout。应重点排查 gpu"
+      },
+      {
+        "id": "t05-label-svc-canceled",
+        "difficulty": "L2",
+        "linear_success": false,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "根因是下游 `label-svc` 响应延迟过高，导致网关等待上游响应超时并主动取消请求，产生大量 `context canceled`，进而推高接口错误率至 35%；网关及所在节点自身 CPU、内存等资源正常，因此不是网关本身资源或进程异常导致。",
+        "replan_conclusion": "根因定位为 label-svc 数据库连接池耗尽：连接池使用率达到100%，活跃连接全部处于查询执行状态，导致数据库查询阻塞、label-svc P99延迟从180ms升至8.4s，最终触发网关上游等待超时并主动取消请求，造成大量 context canceled 和接口错误率升高。"
+      },
+      {
+        "id": "t06-inode-exhausted",
+        "difficulty": "L2",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 5,
+        "linear_conclusion": "根因是 `/data` 文件系统 inode 已耗尽（使用率 100%），而非磁盘容量不足；`/data/tmp_features` 目录下由 `chenqi` 近期生成约 2200 万个 4KB 小文件，占满全部 inode，导致应用在创建新文件时返回 `ENOSPC`，但已有大文件仍可写，因此 `df -h` 仍显示仅使用 68%，内核及底层 I/O 均",
+        "replan_conclusion": "/data 写入失败的根因是 inode 已耗尽，而非磁盘容量不足：df -i 显示 inode 使用率 100%（6800 万/6800 万），导致创建新文件返回 ENOSPC。主要占用来自 /data/tmp_features，约有 2200 万个 4KB 特征小文件，属主 chenqi，且大多为最近 7 天生成。写已有大文件正常也符合 inode 耗尽"
+      },
+      {
+        "id": "t07-driver-mismatch",
+        "difficulty": "L1",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 1,
+        "linear_conclusion": "结论：gpu07 根因为 unattended-upgrades 自动将 NVIDIA 用户态驱动库从 535.86 升级至 535.104，但节点内核仍加载旧版 535.86 NVIDIA 模块，导致驱动与用户态库版本不匹配，NVML 初始化失败，进而使 `nvidia-smi`、GPU 监控和所有 GPU 任务提交均不可用；CPU、内存及网络资源正常，未",
+        "replan_conclusion": "根因已定位：gpu07 昨夜 03:12 由 unattended-upgrades 自动将 nvidia-driver 从 535.86 升级到 535.104，导致当前已加载的 NVIDIA 内核模块与用户态 NVML 库版本不一致，因此 nvidia-smi 初始化失败，所有 GPU 任务无法提交。建议尽快重启 gpu07 使内核模块与新驱动库版本一致"
+      },
+      {
+        "id": "t08-container-no-gpu",
+        "difficulty": "L2",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 1,
+        "linear_conclusion": "根因是启动容器时未配置 NVIDIA GPU runtime 或未传递 `--gpus all`（或指定设备），导致 GPU 设备及 NVIDIA 相关库未映射进容器；宿主机驱动和 GPU 状态正常，且日志显示容器内 `nvidia-smi` 不存在，排除宿主机故障及主要的 CUDA/PyTorch 版本兼容问题。",
+        "replan_conclusion": "根因是容器 qwen_ft 未注入 NVIDIA GPU 运行时，容器内缺少 nvidia-smi，导致 GPU 设备和驱动能力未暴露给容器，因此 torch.cuda.is_available() 返回 False。宿主机驱动正常，问题不在宿主机；请使用 NVIDIA Container Toolkit 配置并以 --gpus all（或等效 GPU 资源"
+      },
+      {
+        "id": "t09-ssh-slow-dns",
+        "difficulty": "L2",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 1,
+        "linear_conclusion": "根因是内网 DNS 服务器 `dns01（10.0.0.2）`因内存泄漏反复重启，导致约 53% DNS 查询超时；各 GPU 节点的 `sshd` 登录阶段进行客户端 IP 反向 DNS 解析时等待超时，故每次 SSH 登录约卡 10 秒。节点自身 CPU、内存、磁盘、内核及网络均无异常，登录后的正常操作也印证问题集中在 SSH 的登录期 DNS 反查依赖",
+        "replan_conclusion": "根因是各 GPU 节点 SSH 登录阶段进行客户端来源地址反向 DNS 解析时，内网 DNS 服务器 dns01（10.0.0.2）响应超时。sshd 日志中的“reverse mapping checking getaddrinfo failed”与每次约 10 秒的固定延迟相符，因此登录认证完成后才显示提示符。应排查并修复 dns01 的反向解析区域、网"
+      },
+      {
+        "id": "t10-hf-download",
+        "difficulty": "L1",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 1,
+        "linear_conclusion": "根因是新同学的模型下载配置统一直连 `huggingface.co`，而当前出口网关无法访问境外 HuggingFace，导致连接全部超时；本地网络、带宽、节点、内核及网关资源均正常，且 `hf-mirror.com` 连通正常。因此应将模型源切换为可达的镜像站或配置境外访问代理。",
+        "replan_conclusion": "根因已定位：出口网关到 huggingface.co 的境外直连全部连接超时，导致新同学下载 HuggingFace 模型失败；hf-mirror.com 连通正常。建议将 HuggingFace 下载源切换为 hf-mirror.com（例如设置 HF_ENDPOINT=https://hf-mirror.com），或在出口网关配置 HuggingFace"
+      },
+      {
+        "id": "t11-thermal-fan",
+        "difficulty": "L3",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "根因是 gpu05 的 2 号 GPU 温度异常升高至 91℃，触发 NVIDIA 的 `SW Thermal Slowdown` 保护机制并自动降频，导致训练吞吐下降约一半；进程、代码、数据及机房环境均未发现异常，疑似该卡散热故障（如风扇异常或散热器问题），需进一步检查风扇传感器及硬件散热状态。",
+        "replan_conclusion": "gpu05 上 2 号 GPU 温度异常升高至 91℃，并已触发 NVIDIA SW Thermal Slowdown，导致 GPU 自动降频，因此训练速度下降约一半。根因是该卡散热异常或风扇/散热组件故障，非代码、数据或进程抢占问题。"
+      },
+      {
+        "id": "t12-shared-io-slow",
+        "difficulty": "L3",
+        "linear_success": false,
+        "replan_success": false,
+        "linear_steps": 6,
+        "replan_steps": 5,
+        "linear_conclusion": "根因是节点上的 `rsync` 进程（PID 52301）持续执行大量顺序读，导致 `/data` 底层共享存储设备长期达到 100% 利用率、IO 平均延迟升至 812ms，挤占训练任务和 DataLoader 的读 IO；因此 CPU、内存及磁盘容量均正常，但数据读取严重阻塞，造成所有训练任务几乎停滞。",
+        "replan_conclusion": "根因已定位：PID 52301 的 rsync 进程正在将 /data/datasets 全量拷贝 4.2TB 至外部 NAS，持续产生大量顺序读并占满 /data 底层设备带宽，导致磁盘 util 达到 100%、平均 await 升至 812ms，训练任务的 DataLoader 因 I/O 阻塞而长时间卡住。"
+      },
+      {
+        "id": "t13-port-occupied",
+        "difficulty": "L2",
+        "linear_success": false,
+        "replan_success": false,
+        "linear_steps": 6,
+        "replan_steps": 1,
+        "linear_conclusion": "根因是 `gpu02` 上的 `8000` 端口已被其他进程占用，导致推理服务的 Uvicorn 无法绑定监听地址并立即退出；节点、GPU、显存、CPU 和内存资源均正常，排除硬件故障及资源不足因素。",
+        "replan_conclusion": "根因是 gpu02 上的 8000 端口已被其他进程占用，导致推理服务无法绑定 0.0.0.0:8000，启动后立即退出。需释放该端口或将推理服务配置到未占用端口后重试。"
+      },
+      {
+        "id": "t14-home-quota",
+        "difficulty": "L2",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 3,
+        "linear_conclusion": "根因是用户 `sunba` 的 `/home` 配额已达到硬上限 50GB（100%），其中 `~/.cache/huggingface` 占约 38GB、`~/.conda/pkgs` 占约 7GB，导致 Vim 保存和 Conda 安装向 home 配额范围内写入时分别报 `E514 write error` 和 `Disk quota exceeded",
+        "replan_conclusion": "根因是 sunba 的 home 用户配额已满：50GB 配额已使用 100%，导致 Vim 保存触发 E514 write error、Conda 安装触发 Disk quota exceeded。/data 分区及 sunba 的 /data/users/sunba 配额均正常，不是磁盘物理空间不足。主要占用为 ~/.cache/huggingface "
+      },
+      {
+        "id": "t15-vscode-ipython",
+        "difficulty": "L2",
+        "linear_success": false,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 2,
+        "linear_conclusion": "根因是 `gpu04` 的 2 号卡上 PID `88123` 持续占用约 30.8 GB 显存，但 GPU 利用率为 0%，且无其他进程、训练任务启动记录或 CUDA/NVRM 错误，判断该进程处于空闲卡死或异常残留状态，未释放 CUDA 显存上下文，导致显存长期占用并触发告警；需进一步查询并处理 PID `88123`。",
+        "replan_conclusion": "根因已定位：用户 zhoujiu 的 ipython 交互进程 PID 88123 由 vscode-server 启动于 5 天前，关联终端已断开形成孤儿会话。该进程独占 gpu04 的 2 号卡 30.8GB 显存，但 GPU 利用率为 0%，导致显存占用持续 96% 约 4 小时。"
+      },
+      {
+        "id": "t16-nccl-ifname",
+        "difficulty": "L3",
+        "linear_success": true,
+        "replan_success": true,
+        "linear_steps": 6,
+        "replan_steps": 6,
+        "linear_conclusion": "根因是 gpu06 上 NCCL 自动选择了 `docker0` 网卡（`172.17.0.1`），而另一节点选择了 `eth0`（`10.0.3.x`），导致 NCCL bootstrap 通信跨错误网段、无法建立通信环，两个 rank 因而长期阻塞在 `init_process_group`；节点网络连通性、资源状态及训练进程本身均正常。",
+        "replan_conclusion": "结论：**gpu06 与现有节点的分布式环境配置不一致，导致 NCCL 在初始化阶段 hang；具体原因尚无法仅凭当前观测确定。**\n\n优先核查 CUDA/NCCL/PyTorch 版本、主机名解析及共享存储路径，并设置 `NCCL_DEBUG=INFO`，同时明确指定 `NCCL_SOCKET_IFNAME=eth0` 复跑以定位具体卡点。"
+      }
+    ],
+    "run_at": "2026-08-30 05:21:53"
+  },
+  "_meta": {
+    "embed_model": "BAAI/bge-m3",
+    "chat_model": "gpt-5.6-terra",
+    "reasoning_effort": "medium",
+    "time": "2026-08-30 05:21:53",
+    "elapsed_s": 1402.1
+  },
+  "refusal": {
+    "n": 30,
+    "invalid_n": 0,
+    "unanswerable_n": 15,
+    "refusal_rate_on_unanswerable": 1.0,
+    "answerable_n": 15,
+    "answer_rate_on_answerable": 1.0,
+    "correct_rate_on_answerable": 0.933,
+    "mistakes": [
+      {
+        "id": "a15",
+        "type": "answered_but_low_keyword",
+        "gen": "可能原因包括：\n\n- 某个 rank 的数据加载被阻塞，例如共享盘 I/O 变慢或 DataLoader 死锁。\n- 集合通信出现死锁，例如各 rank 执行了不同的通信次序，常见于条件分支中调用 `all_reduce`。\n- 如果问题发生在分布式初始化阶段，可能是多机 NCCL 通信未连通，需要"
+      }
+    ],
+    "invalid": [],
+    "run_at": "2026-08-30 05:12:54"
+  }
+}

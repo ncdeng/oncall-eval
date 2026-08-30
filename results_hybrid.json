@@ -1,0 +1,31 @@
+{
+  "retrieval_hybrid": {
+    "strategy": "heading",
+    "vector": {
+      "recall@1": 0.91,
+      "recall@3": 0.96,
+      "answer_coverage": 0.955,
+      "n": 100
+    },
+    "bm25": {
+      "recall@1": 0.93,
+      "recall@3": 0.99,
+      "answer_coverage": 0.965,
+      "n": 100
+    },
+    "hybrid_rrf": {
+      "recall@1": 0.9,
+      "recall@3": 0.99,
+      "answer_coverage": 0.99,
+      "n": 100
+    },
+    "run_at": "2026-08-30 06:02:25",
+    "_meta": {
+      "embed_model": "BAAI/bge-m3",
+      "chunks": 83,
+      "bm25_tokenizer": "jieba.cut_for_search",
+      "rrf_k": 60,
+      "rrf_rank_base": 1
+    }
+  }
+}

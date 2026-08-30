@@ -1,0 +1,473 @@
+{
+  "description": "重规划实验任务集：16 个模拟告警排障任务，难度分层 L1（单跳，线性也可解）/ L2（需从观测提取一次参数）/ L3（需多跳提取或换排查方向）。tool_behavior 定义各工具模拟返回（need 为参数须包含的关键词，全部命中才返回对应观测，空数组为兜底，规则按顺序取首个命中）。关键证据均需从前一步观测中提取参数（PID / 节点名 / 容器名 / 服务名 / 端口号 / 用户名）才能获取。判定：结论命中 root_cause_keywords 中至少 min_hit 个关键词视为定位成功。",
+  "tasks": [
+    {
+      "id": "t01-gpu-mem-full",
+      "difficulty": "L2",
+      "alert": "监控告警：gpu01 节点 3 号卡显存占用 98% 持续 30 分钟。近期无人上报正在使用该卡。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "最近 2 小时训练相关日志无 ERROR / OOM 记录，也未发现新任务启动日志。"}
+        ],
+        "query_process_rank": [
+          {"need": ["gpu"], "response": "3 号卡显存占用排行：PID 34521 占 22.4GB（GPU 利用率 0%，已运行 72 小时）；PID 40112 占 1.2GB（利用率 35%）。"},
+          {"need": [], "response": "CPU / 内存占用排行：均低于 10%，无异常。"}
+        ],
+        "query_process_detail": [
+          {"need": ["34521"], "response": "PID 34521：用户 zhangsan，命令 python -m jupyter_kernel，启动于 3 天前，最近 48 小时无任何输出，持有 3 号卡 22.4GB 显存未释放。"},
+          {"need": [], "response": "无有效信息：需提供具体 PID（可先查进程占用排行获取）。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无 OOM Killer 记录、无 Xid 显卡报错。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "gpu01 节点 CPU / 内存 / 网络指标均正常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率 62%，正常。"}
+        ]
+      },
+      "root_cause_keywords": ["jupyter"],
+      "min_hit": 1,
+      "attribution_keywords": ["zhangsan"]
+    },
+    {
+      "id": "t02-train-vanish",
+      "difficulty": "L1",
+      "alert": "用户 wangwu 报障：昨晚在 gpu02 提交的训练任务今早发现进程消失，终端无任何报错，日志停在 epoch 3 的数据加载阶段。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "任务日志末尾为 'epoch 3: loading data shard 12/40'，之后无输出；全程无 ERROR / Traceback。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "gpu02 内核日志：Out of memory: Killed process 78901 (python), total-vm 61.2GB, anon-rss 58.9GB，时间与任务消失时间吻合。"}
+        ],
+        "query_process_detail": [
+          {"need": ["78901"], "response": "PID 78901 已不存在（被 OOM Killer 终止）。历史记录：用户 wangwu 的训练主进程，DataLoader num_workers=16。"},
+          {"need": [], "response": "无有效信息：需提供具体 PID。"}
+        ],
+        "query_process_rank": [
+          {"need": ["mem"], "response": "当前内存占用排行：残留 dataloader worker 进程若干，单个 RSS 7-8GB。"},
+          {"need": [], "response": "GPU / CPU 占用排行无异常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "gpu02 节点当前指标正常（任务已退出）。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率 55%，正常。"}
+        ]
+      },
+      "root_cause_keywords": [["oom", "内存"]],
+      "min_hit": 1
+    },
+    {
+      "id": "t03-disk-full",
+      "difficulty": "L2",
+      "alert": "监控告警：共享存储 /data 使用率 99%。多名同学反馈保存 checkpoint 报 No space left on device。",
+      "tool_behavior": {
+        "query_disk": [
+          {"need": ["checkpoint"], "response": "/data/checkpoints 目录明细排行：lisi/exp_ablation 占 1.8TB（近 3 天新增 1.2TB，脚本每 100 step 保存全量 checkpoint 未清理）；其余用户目录均小于 200GB。"},
+          {"need": [], "response": "df -h：/data 使用率 99%（容量 8T / 已用 7.9T）；inode 使用率 41% 正常。du 首层：/data/checkpoints 占 5.6TB，/data/datasets 占 1.9TB。"}
+        ],
+        "query_log": [
+          {"need": [], "response": "应用日志大量 'OSError: No space left on device'，与告警一致，无其他异常。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "各进程 CPU / 内存 / GPU 占用正常。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息：需提供具体 PID。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "节点负载正常，仅磁盘使用率告警。"}
+        ]
+      },
+      "root_cause_keywords": [["lisi", "exp_ablation", "未清理", "每 100 step", "每100 step"]],
+      "min_hit": 1,
+      "attribution_keywords": ["lisi"]
+    },
+    {
+      "id": "t04-nccl-timeout",
+      "difficulty": "L2",
+      "alert": "用户报障：gpu03 + gpu04 两机分布式训练反复失败，报 NCCL communication timeout，重试 2 次均在启动后约 10 分钟失败。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "rank0（gpu04）日志：训练正常至 step 240，随后 barrier 等待超时报 NCCL timeout。rank1（gpu03）日志：step 236 后无任何输出，先于 rank0 停止。提示：先失联的是 gpu03 上的 rank1 进程。"}
+        ],
+        "query_dmesg": [
+          {"need": ["gpu03"], "response": "gpu03 内核日志：Memory cgroup out of memory: Killed process 91203 (python)，退出码 137，时间与 rank1 失联时间吻合。"},
+          {"need": [], "response": "gpu04 内核日志无异常。（如需查看其他节点，请在参数中指明节点名。）"}
+        ],
+        "query_process_detail": [
+          {"need": ["91203"], "response": "PID 91203：gpu03 上的 rank1 训练进程，被 cgroup OOM 终止；该机内存配额 64GB，进程峰值 63.8GB。"},
+          {"need": [], "response": "无有效信息：需提供具体 PID 或节点名。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "当前两节点资源占用正常（任务均已退出）。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "两节点间网络连通正常，ping / 带宽无异常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "两节点磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": ["gpu03", ["oom", "内存", "137"]],
+      "min_hit": 2
+    },
+    {
+      "id": "t05-label-svc-canceled",
+      "difficulty": "L2",
+      "alert": "实验室数据标注平台网关告警：接口错误率 35%，错误日志中 context canceled 占比 80%。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": ["label"], "response": "label-svc 服务日志：大量慢查询告警 'slow query: SELECT * FROM annotations WHERE ...（8.2s）'，数据库连接等待队列持续堆积。"},
+          {"need": [], "response": "网关日志：context canceled 大量出现，均为上游等待超时主动取消；调用链显示耗时集中在下游服务 label-svc。"}
+        ],
+        "query_monitor": [
+          {"need": ["label"], "response": "label-svc：P99 延迟从 180ms 升至 8.4s，数据库连接池使用率 100%，活跃连接全部处于查询执行状态。"},
+          {"need": [], "response": "网关本身 CPU / 内存正常。需指定具体服务名可查询下游服务指标。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "各节点进程资源占用正常。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息：需提供具体 PID 或服务名。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": ["label", ["慢查询", "连接池"]],
+      "min_hit": 2
+    },
+    {
+      "id": "t06-inode-exhausted",
+      "difficulty": "L2",
+      "alert": "监控告警：/data 分区大量写入失败报 No space left on device，但 df -h 显示使用率仅 68%。",
+      "tool_behavior": {
+        "query_disk": [
+          {"need": ["inode"], "response": "df -i：/data inode 使用率 100%（6800 万 / 6800 万）。inode 大头：/data/tmp_features 下约 2200 万个 4KB 特征小文件，属主 chenqi，最近 7 天生成。"},
+          {"need": [], "response": "df -h：/data 使用率 68%（8T 已用 5.4T），容量充足但写入仍失败。提示：容量正常仍报写满可检查 inode 使用（df -i）。"}
+        ],
+        "query_log": [
+          {"need": [], "response": "应用日志：大量 OSError: No space left on device，集中在创建新文件的任务，写已有大文件不受影响。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "各进程资源占用正常。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息：需提供具体 PID。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "节点负载正常。"}
+        ]
+      },
+      "root_cause_keywords": ["inode"],
+      "min_hit": 1,
+      "attribution_keywords": ["chenqi"]
+    },
+    {
+      "id": "t07-driver-mismatch",
+      "difficulty": "L1",
+      "alert": "多名用户反馈：gpu07 上执行 nvidia-smi 报 Failed to initialize NVML: Driver/library version mismatch，任务全部无法提交。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "系统日志：昨夜 03:12 unattended-upgrades 自动升级了 nvidia-driver 包（535.86 → 535.104），此后所有 NVML 调用报版本不匹配。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核中仍加载着旧版 nvidia 模块（535.86），与用户态库（535.104）版本不一致。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "无法获取 GPU 排行（NVML 初始化失败），CPU / 内存正常。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息：需提供具体 PID。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "gpu07 节点 CPU / 内存 / 网络正常，GPU 指标采集中断（与 NVML 故障一致）。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": ["驱动", ["升级", "升至", "更新", "不一致", "mismatch"]],
+      "min_hit": 2
+    },
+    {
+      "id": "t08-container-no-gpu",
+      "difficulty": "L2",
+      "alert": "用户报障：在容器里跑训练 torch.cuda.is_available() 返回 False，但宿主机 nvidia-smi 一切正常。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "平台记录：该用户今早启动容器 qwen_ft（镜像 pytorch/pytorch:2.3.0-cuda12.1），宿主机驱动 535（支持 CUDA 12.2 及以下）；容器内执行 nvidia-smi 报 command not found。"}
+        ],
+        "query_process_detail": [
+          {"need": ["qwen_ft"], "response": "docker inspect qwen_ft：启动参数中无 --gpus，未挂载任何 GPU 设备；宿主机 nvidia-container-toolkit 已正确安装。"},
+          {"need": [], "response": "无有效信息：需提供容器名或 PID。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "宿主机各卡显存与利用率正常，无该用户进程。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "节点指标正常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": [["--gpus", "gpu 运行时", "gpu 设备未", "未注入"]],
+      "min_hit": 1,
+      "attribution_keywords": ["qwen_ft"]
+    },
+    {
+      "id": "t09-ssh-slow-dns",
+      "difficulty": "L2",
+      "alert": "多名用户反馈：SSH 登录各 GPU 节点都要卡 10 秒以上才出提示符，登录后操作正常。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "sshd 日志：每次登录耗时约 10 秒，伴随 'reverse mapping checking getaddrinfo failed' 记录，指向 DNS 反向解析超时；内网 DNS 服务器为 dns01（10.0.0.2）。"}
+        ],
+        "query_monitor": [
+          {"need": ["dns"], "response": "dns01（10.0.0.2）：近 2 小时 53% 的查询超时，服务进程存在内存泄漏、正在反复重启。"},
+          {"need": [], "response": "各 GPU 节点负载正常。需指定服务名或节点名可查详情。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "各节点进程资源占用正常。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息：需提供具体 PID 或服务名。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": ["dns", ["超时", "反向", "反解", "反查"]],
+      "min_hit": 2
+    },
+    {
+      "id": "t10-hf-download",
+      "difficulty": "L1",
+      "alert": "值班咨询升级：多位新同学下载 HuggingFace 模型全部 connection timeout，无法开工。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "出口网关日志：到 huggingface.co 的连接全部超时（境外直连不可达）；到镜像站 hf-mirror.com 连通正常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "出口带宽占用 12%，网络本身正常。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "各进程资源占用正常。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": [["hf_endpoint", "hf-mirror", "镜像", "直连", "境外", "不可达"]],
+      "min_hit": 1
+    },
+    {
+      "id": "t11-thermal-fan",
+      "difficulty": "L3",
+      "alert": "用户反馈：gpu05 上的训练速度比昨天慢了一半，无任何报错，代码与数据均未改动。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "训练日志无 ERROR：step 耗时从 0.82s 涨至 1.94s，GPU 利用率在 40%-99% 间波动。未见数据加载报错。"}
+        ],
+        "query_monitor": [
+          {"need": ["fan"], "response": "ipmitool 传感器：gpu05 的 FAN3 转速 0 RPM（故障停转），相邻 FAN4 转速 12800 RPM 处于补偿状态。"},
+          {"need": ["风扇"], "response": "ipmitool 传感器：gpu05 的 FAN3 转速 0 RPM（故障停转），相邻 FAN4 转速 12800 RPM 处于补偿状态。"},
+          {"need": ["gpu05"], "response": "gpu05 节点：2 号卡温度 91℃（同节点其余卡 74-78℃），nvidia-smi -q 显示 SW Thermal Slowdown = Active（正在降频）。机房环境温度正常。可进一步查风扇传感器。"},
+          {"need": [], "response": "集群总览：各节点负载正常。需指定节点名查详情。"}
+        ],
+        "query_dmesg": [
+          {"need": ["gpu05"], "response": "gpu05 内核日志：无 Xid 报错、无 OOM。"},
+          {"need": [], "response": "内核日志无异常。（可指定节点名）"}
+        ],
+        "query_process_rank": [
+          {"need": ["gpu"], "response": "gpu05 各卡进程正常，该用户训练进程 GPU 利用率波动大但无异常进程抢占。"},
+          {"need": [], "response": "CPU / 内存排行正常。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息：需提供具体 PID。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘 IO 正常。"}
+        ]
+      },
+      "root_cause_keywords": [["降频", "throttl", "slowdown"], ["风扇", "fan", "散热"]],
+      "min_hit": 2
+    },
+    {
+      "id": "t12-shared-io-slow",
+      "difficulty": "L3",
+      "alert": "多名用户反馈：读 /data 数据集极慢，DataLoader 长时间卡住，所有训练任务几乎不动。",
+      "tool_behavior": {
+        "query_disk": [
+          {"need": [], "response": "df -h：/data 使用率 71% 正常。iostat：/data 底层设备 util 100%，平均 await 812ms（正常应 <10ms），存在大量持续的顺序读流量。"}
+        ],
+        "query_process_rank": [
+          {"need": ["cpu"], "response": "CPU 排行：PID 52301（rsync）CPU 42% 持续高位；其余进程正常。"},
+          {"need": ["mem"], "response": "内存排行正常。"},
+          {"need": [], "response": "GPU 排行正常（各训练进程利用率反常偏低，疑似在等数据）。"}
+        ],
+        "query_process_detail": [
+          {"need": ["52301"], "response": "PID 52301：用户 zhaoliu 的 rsync 进程，正从 /data/datasets 全量拷贝 4.2TB 到外部 NAS，已运行 6 小时，持续占满共享盘读带宽。"},
+          {"need": ["rsync"], "response": "rsync 进程（PID 52301）：用户 zhaoliu，源 /data/datasets（4.2TB），目的地为外部 NAS，已运行 6 小时。"},
+          {"need": [], "response": "无有效信息：需提供 PID 或进程名。"}
+        ],
+        "query_log": [
+          {"need": [], "response": "各训练任务日志无 ERROR，普遍卡在数据加载阶段。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "节点 CPU / 内存正常，共享存储 IO 延迟异常升高。"}
+        ]
+      },
+      "root_cause_keywords": ["rsync"],
+      "min_hit": 1,
+      "attribution_keywords": ["zhaoliu"]
+    },
+    {
+      "id": "t13-port-occupied",
+      "difficulty": "L2",
+      "alert": "用户报障：在 gpu02 上部署推理服务失败，服务一启动就退出，重试多次均相同现象。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "服务日志：uvicorn 启动报 [Errno 98] error while attempting to bind on address 0.0.0.0:8000 — address already in use，随即退出。"}
+        ],
+        "query_process_detail": [
+          {"need": ["8000"], "response": "端口 8000 当前监听进程：PID 61234，用户 wangwu 上周启动的 gradio demo（近一周无访问记录，疑似忘记关闭）。"},
+          {"need": ["61234"], "response": "PID 61234：用户 wangwu 的 gradio demo 进程，监听 8000 端口，上周四启动，近一周无访问。"},
+          {"need": [], "response": "无有效信息：需提供 PID、进程名或端口号。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "各进程资源占用正常。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "gpu02 节点指标正常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": ["8000", ["占用", "already in use"]],
+      "min_hit": 2,
+      "attribution_keywords": ["wangwu"]
+    },
+    {
+      "id": "t14-home-quota",
+      "difficulty": "L2",
+      "alert": "用户 sunba 报障：vim 保存报错、conda 装包失败，提示磁盘写满；但他看 df 里 /data 空间明明充足。",
+      "tool_behavior": {
+        "query_disk": [
+          {"need": ["sunba"], "response": "配额查询：sunba 的 home 配额 50GB 已用 50GB（100%）。目录大头：~/.cache/huggingface 占 38GB、~/.conda/pkgs 占 7GB。其 /data/users/sunba 配额仅用 12%。"},
+          {"need": ["home"], "response": "home 分区总体使用 82%。单用户配额情况需按用户名查询。"},
+          {"need": [], "response": "df -h：/data 使用率 63% 正常；home 分区总体 82%。提示：用户级问题可按用户名查询配额。"}
+        ],
+        "query_log": [
+          {"need": [], "response": "该用户 shell 记录：vim 报 E514 write error，conda 报 Disk quota exceeded。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "各进程资源占用正常。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息：需提供具体 PID。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "节点指标正常。"}
+        ]
+      },
+      "root_cause_keywords": ["配额", ["cache", "缓存"]],
+      "min_hit": 2
+    },
+    {
+      "id": "t15-vscode-ipython",
+      "difficulty": "L2",
+      "alert": "监控告警：gpu04 的 2 号卡显存占用 96% 持续 4 小时，GPU 利用率为 0%。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": [], "response": "近 4 小时无训练任务启动记录，无报错日志。"}
+        ],
+        "query_process_rank": [
+          {"need": ["gpu"], "response": "2 号卡显存排行：PID 88123 占 30.8GB（利用率 0%）；无其他占用进程。"},
+          {"need": [], "response": "CPU / 内存排行正常。"}
+        ],
+        "query_process_detail": [
+          {"need": ["88123"], "response": "PID 88123：用户 zhoujiu 的 ipython 交互进程，父进程为 vscode-server，启动于 5 天前，关联终端已断开（孤儿会话），持有 2 号卡 30.8GB 显存。"},
+          {"need": [], "response": "无有效信息：需提供具体 PID。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "gpu04 节点其他指标正常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": [["ipython", "vscode"]],
+      "min_hit": 1,
+      "attribution_keywords": ["zhoujiu"]
+    },
+    {
+      "id": "t16-nccl-ifname",
+      "difficulty": "L3",
+      "alert": "用户报障：新节点 gpu06 加入两机分布式训练后，NCCL 初始化一直 hang 住，既不报错也不超时。",
+      "tool_behavior": {
+        "query_log": [
+          {"need": ["nccl_debug"], "response": "用户按建议设 NCCL_DEBUG=INFO 复跑，新日志：gpu06 上 NCCL 选择了网卡 docker0（172.17.0.1），其余节点选择 eth0（10.0.3.x），跨网段无法组环，初始化挂起。"},
+          {"need": ["debug"], "response": "用户按建议设 NCCL_DEBUG=INFO 复跑，新日志：gpu06 上 NCCL 选择了网卡 docker0（172.17.0.1），其余节点选择 eth0（10.0.3.x），跨网段无法组环，初始化挂起。"},
+          {"need": [], "response": "应用日志：两个 rank 均停在 init_process_group，无任何 NCCL 输出。提示：可让用户设置 NCCL_DEBUG=INFO 复跑后再查日志。"}
+        ],
+        "query_monitor": [
+          {"need": [], "response": "gpu06 与其他节点 ping 连通正常，带宽正常，未见丢包。"}
+        ],
+        "query_process_rank": [
+          {"need": [], "response": "两节点进程存活，GPU 利用率 0%（等待通信建立）。"}
+        ],
+        "query_process_detail": [
+          {"need": [], "response": "无有效信息：需提供具体 PID。"}
+        ],
+        "query_dmesg": [
+          {"need": [], "response": "内核日志无异常。"}
+        ],
+        "query_disk": [
+          {"need": [], "response": "磁盘使用率正常。"}
+        ]
+      },
+      "root_cause_keywords": [["nccl_socket_ifname", "docker0"]],
+      "min_hit": 1
+    }
+  ]
+}

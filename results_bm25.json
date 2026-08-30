@@ -1,0 +1,19 @@
+{
+  "retrieval_bm25": {
+    "whole": {
+      "chunks": 18,
+      "recall@1": 0.87,
+      "recall@3": 0.98,
+      "answer_coverage": 0.99,
+      "n": 100
+    },
+    "heading": {
+      "chunks": 83,
+      "recall@1": 0.93,
+      "recall@3": 0.99,
+      "answer_coverage": 0.965,
+      "n": 100
+    },
+    "run_at": "2026-08-30 06:02:18"
+  }
+}
