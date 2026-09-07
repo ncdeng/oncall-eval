@@ -6,8 +6,10 @@
 | --- | --- | --- | --- |
 | A 检索命中 | 值班文档按标题层级切分入库（vs 整篇入库） | `eval/gold_qa.json`（100 题金标准） | 文档级 Recall@1 / Recall@3、答案要点覆盖率 |
 | B 按需检索路由 | 检索作为工具由 Agent 按意图决定调用（vs 固定前置检索） | `eval/ondemand_cases.json`（100 条，need/skip 各半） | 路由准确率、无谓检索次数 |
-| C 有据作答 / 无据拒答 | 知识库无依据时明确拒答不编造 | `eval/refusal_cases.json`（15 无答案 + 15 可答对照） | 无答案题拒答率、可答题回答率与要点正确率 |
+| C 有据作答 / 无据拒答 | 知识库无依据时明确拒答不编造 | `eval/refusal_cases.json`（18 无答案 + 15 可答对照，共 33 条） | 无答案题拒答率、可答题回答率与要点正确率 |
 | D 动态重规划 | Planner-Executor-Replanner（vs 一次性线性计划） | `eval/replan_tasks.json`（16 个排障任务，L1/L2/L3 分层） | 根因定位成功率、收敛步数 |
+
+最近一次全量评测的结果在 `results.json`（每个实验带 `run_at`，`_meta` 记录 embedding / 对话模型与耗时）；按下方「运行」配好环境变量后执行 `python run_eval.py` 即可完整复现，`--only` 可单跑一组。
 
 ## 目录结构
 
